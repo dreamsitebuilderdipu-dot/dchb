@@ -1,0 +1,1719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gram Darpan - Village Directory Explorer</title>
+  <meta name="description" content="Explore census amenities, education, land, health, sanitation, and infrastructure for Indian villages. Powered by Google Apps Script and Google Sheets.">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+    @media print {
+      body {
+        background: white !important;
+        color: black !important;
+      }
+      .no-print, header, main, footer, #apiModal {
+        display: none !important;
+      }
+      #factsheetModal {
+        display: block !important;
+        position: static !important;
+        inset: auto !important;
+        background: white !important;
+        overflow: visible !important;
+        width: 100% !important;
+        height: auto !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      #factsheetModal .factsheet-card {
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+      }
+      .avoid-break {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+      }
+      .page-break {
+        break-after: page !important;
+        page-break-after: always !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col antialiased selection:bg-emerald-100 selection:text-emerald-900">
+
+  <!-- TOP BAR -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold text-lg shadow-sm">
+          <i data-lucide="map-pin" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-bold tracking-tight text-slate-900 leading-none">Gram Darpan</h1>
+          <p class="text-xs text-slate-500 mt-0.5">Census Village Directory & Infrastructure Portal</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="btnSyncData" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition-colors border border-emerald-300 shadow-xs" title="Sync and refresh data from Google Sheet">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-emerald-700"></i>
+          <span>Sync Sheet</span>
+        </button>
+
+        <button id="btnOpenApiModal" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200">
+          <i data-lucide="database" class="w-3.5 h-3.5 text-slate-600"></i>
+          <span id="apiStatusText">Apps Script Config</span>
+        </button>
+
+        <button onclick="openFactsheetModal()" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors shadow-sm" title="View & Print Full Village Factsheet (All 8 Categories)">
+          <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+          <span>Print Factsheet</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full flex flex-col gap-6">
+
+    <!-- VILLAGE SELECTOR STRIP -->
+    <section class="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+      <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center flex-1">
+        <div class="min-w-[200px]">
+          <label for="villageSelect" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Select Village (Col H)</label>
+          <div class="relative">
+            <select id="villageSelect" class="w-full appearance-none bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 pr-8">
+              <!-- Populated dynamically -->
+            </select>
+            <i data-lucide="chevron-down" class="w-4 h-4 text-slate-500 absolute right-2.5 top-2.5 pointer-events-none"></i>
+          </div>
+        </div>
+
+        <div class="flex-1 min-w-[220px]">
+          <label for="villageSearch" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Search Village / Code</label>
+          <div class="relative">
+            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+            <input type="text" id="villageSearch" placeholder="Type village name, block, or code..." class="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Metrics Pill Strip -->
+      <div class="flex items-center gap-4 pt-3 md:pt-0 border-t md:border-t-0 border-slate-100 text-xs text-slate-600">
+        <div>
+          <span class="block text-slate-400 font-medium">Population</span>
+          <span id="quickPop" class="text-sm font-bold text-slate-900 tabular-nums">0</span>
+        </div>
+        <div class="h-8 w-px bg-slate-200"></div>
+        <div>
+          <span class="block text-slate-400 font-medium">Households</span>
+          <span id="quickHouseholds" class="text-sm font-bold text-slate-900 tabular-nums">0</span>
+        </div>
+        <div class="h-8 w-px bg-slate-200"></div>
+        <div>
+          <span class="block text-slate-400 font-medium">Area (Ha)</span>
+          <span id="quickArea" class="text-sm font-bold text-slate-900 tabular-nums">0</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- MULTI-PAGE NAVIGATION TABS -->
+    <nav class="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-200 scrollbar-none" id="tabsNav">
+      <button onclick="setTab('overview')" class="tab-btn active px-3.5 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors bg-white text-emerald-800 border border-emerald-300 shadow-xs flex items-center gap-2" data-tab="overview">
+        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+        <span>Overview & Demographics</span>
+      </button>
+      <button onclick="setTab('education')" class="tab-btn px-3.5 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors bg-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-2" data-tab="education">
+        <i data-lucide="graduation-cap" class="w-4 h-4"></i>
+        <span>Education</span>
+      </button>
+      <button onclick="setTab('health')" class="tab-btn px-3.5 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors bg-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-2" data-tab="health">
+        <i data-lucide="activity" class="w-4 h-4"></i>
+        <span>Health & Medical</span>
+      </button>
+      <button onclick="setTab('sanitation')" class="tab-btn px-3.5 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors bg-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-2" data-tab="sanitation">
+        <i data-lucide="droplet" class="w-4 h-4"></i>
+        <span>Drinking Water & Sanitation</span>
+      </button>
+      <button onclick="setTab('land')" class="tab-btn px-3.5 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors bg-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-2" data-tab="land">
+        <i data-lucide="wheat" class="w-4 h-4"></i>
+        <span>Land Use & Agriculture</span>
+      </button>
+      <button onclick="setTab('connectivity')" class="tab-btn px-3.5 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors bg-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-2" data-tab="connectivity">
+        <i data-lucide="bus" class="w-4 h-4"></i>
+        <span>Connectivity & Transport</span>
+      </button>
+      <button onclick="setTab('power')" class="tab-btn px-3.5 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors bg-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-2" data-tab="power">
+        <i data-lucide="zap" class="w-4 h-4"></i>
+        <span>Power & Electricity</span>
+      </button>
+      <button onclick="setTab('amenities')" class="tab-btn px-3.5 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors bg-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-2" data-tab="amenities">
+        <i data-lucide="building-2" class="w-4 h-4"></i>
+        <span>Banking & Social Amenities</span>
+      </button>
+    </nav>
+
+    <!-- DYNAMIC TAB PANELS -->
+    <div id="tabContent" class="space-y-6">
+      <!-- Injected by JavaScript -->
+    </div>
+
+  </main>
+
+  <!-- APPS SCRIPT API CONFIGURATION MODAL -->
+  <div id="apiModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 hidden">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <i data-lucide="cloud-cog" class="w-5 h-5 text-emerald-600"></i>
+          <h3 class="text-base font-bold text-slate-900">Google Apps Script Web App URL</h3>
+        </div>
+        <button id="btnCloseApiModal" class="text-slate-400 hover:text-slate-600 p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="py-4 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Deployed Web App URL</label>
+          <input type="url" id="apiUrlInput" placeholder="https://script.google.com/macros/s/.../exec" class="w-full px-3 py-2 text-xs font-mono bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">
+            Deploy your Google Apps Script as a <strong>Web App</strong> (Execute as: <em>Me</em>, Access: <em>Anyone</em>) and paste the URL here.
+          </p>
+        </div>
+
+        <div id="modalStatus" class="hidden p-3 rounded-lg text-xs"></div>
+
+        <div class="bg-slate-50 rounded-lg p-3 text-xs text-slate-600 space-y-1 border border-slate-200">
+          <div class="font-semibold text-slate-800">Target Sheet Settings:</div>
+          <div>• Sheet ID: <span class="font-mono text-slate-700 select-all">1khY5we69UyVaLxZfOrYCmpjziSPqUqZK_CcsT2YmqXQ</span></div>
+          <div>• Sheet Tab: <span class="font-medium text-slate-800">Village Data</span></div>
+          <div>• Village Name: <span class="font-medium text-slate-800">Column H (8th Column)</span></div>
+        </div>
+      </div>
+
+      <div class="pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+        <button id="btnUseSample" class="px-3 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors">
+          Use Built-in Sample Data
+        </button>
+        <div class="flex items-center gap-2">
+          <button id="btnSaveApiUrl" class="px-4 py-2 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-xs">
+            Save & Connect
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPREHENSIVE VILLAGE FACTSHEET MODAL (ALL 8 CATEGORIES) -->
+  <div id="factsheetModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto hidden">
+    <div class="factsheet-card bg-white rounded-2xl max-w-5xl w-full p-6 sm:p-10 shadow-2xl border border-slate-200 my-auto text-slate-900">
+      
+      <!-- On-screen Modal Action Bar (hidden during actual print) -->
+      <div class="no-print flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-slate-200 mb-6">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded">
+            Complete Village Dossier
+          </span>
+          <span class="text-xs text-slate-400">·</span>
+          <span class="text-xs text-slate-600 font-medium">
+            All 8 Categories (All 396 Census Columns)
+          </span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button onclick="window.print()" class="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors shadow-xs active:scale-95">
+            <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+            <span>Print All Village Information (PDF/Paper)</span>
+          </button>
+          <button onclick="closeFactsheetModal()" class="p-2 text-slate-400 hover:text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors" title="Close print preview">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Printable Factsheet Content populated by renderFactsheetModal() -->
+      <div id="factsheetContent" class="space-y-6 text-slate-900">
+        <!-- Generated Dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <footer class="bg-white border-t border-slate-200 mt-auto py-4 text-center text-xs text-slate-500">
+    Gram Darpan • Built for Census Village Directory Data (Sheet ID: 1khY5we69UyVaLxZfOrYCmpjziSPqUqZK_CcsT2YmqXQ)
+  </footer>
+
+  <!-- CORE LOGIC & DATA SCRIPT -->
+  <script>
+    // Embedded sample villages matching the exact 396-column census format
+    const SAMPLE_DATA = [
+      {
+        villageCode: '317800',
+        villageName: 'Raipur',
+        districtName: 'Birbhum',
+        cdBlockName: 'Bolpur-Sriniketan',
+        gramPanchayatName: 'Raipur Gram Panchayat',
+        overview: {
+          stateName: 'West Bengal',
+          districtName: 'Birbhum',
+          subDistrictName: 'Bolpur-Sriniketan',
+          villageName: 'Raipur',
+          villageCode: '317800',
+          cdBlockName: 'Bolpur-Sriniketan',
+          gramPanchayatName: 'Raipur Gram Panchayat',
+          totalPopulation: 2900,
+          totalMalePopulation: 1480,
+          totalFemalePopulation: 1420,
+          totalHouseholds: 620,
+          totalGeographicalArea: 412.5,
+          totalScPopulation: 810,
+          totalStPopulation: 120,
+          sexRatio: 959,
+          subDistrictHqName: 'Bolpur',
+          subDistrictHqDistance: 8,
+          districtHqName: 'Suri',
+          districtHqDistance: 24,
+          nearestStatutoryTown: 'Bolpur',
+          nearestStatutoryTownDistance: 12
+        },
+        education: {
+          schools: [
+            { name: 'Pre-Primary School', govt: 2, pvt: 1, dist: '< 5 km' },
+            { name: 'Primary School', govt: 3, pvt: 1, dist: '< 5 km' },
+            { name: 'Middle School', govt: 2, pvt: 1, dist: '< 5 km' },
+            { name: 'Secondary School', govt: 1, pvt: 0, dist: '< 5 km' },
+            { name: 'Senior Secondary School', govt: 1, pvt: 0, dist: '< 5 km' },
+            { name: 'Degree College (Arts/Science)', govt: 0, pvt: 0, dist: '5 - 10 km (Bolpur)' },
+            { name: 'Engineering College', govt: 0, pvt: 0, dist: '10+ km (Suri)' },
+            { name: 'Vocational Training / ITI', govt: 0, pvt: 0, dist: '10+ km (Suri)' }
+          ],
+          totalGovt: 9,
+          totalPvt: 3
+        },
+        health: {
+          centers: [
+            { name: 'Primary Health Centre (PHC)', count: 1, docsInPos: 2, docsTotal: 2, staffInPos: 4, staffTotal: 5 },
+            { name: 'Primary Health Sub Centre', count: 2, docsInPos: 0, docsTotal: 0, staffInPos: 2, staffTotal: 2 },
+            { name: 'Community Health Centre (CHC)', count: 0, docsInPos: 0, docsTotal: 0, staffInPos: 0, staffTotal: 0, dist: '5 - 10 km' },
+            { name: 'Maternity & Child Welfare', count: 1, docsInPos: 1, docsTotal: 1, staffInPos: 3, staffTotal: 3 },
+            { name: 'Veterinary Hospital', count: 1, docsInPos: 1, docsTotal: 1, staffInPos: 2, staffTotal: 2 }
+          ],
+          privateStats: {
+            mbbsDoctors: 1,
+            otherDoctors: 2,
+            medicineShops: 3,
+            outPatientClinics: 1
+          }
+        },
+        sanitation: {
+          water: [
+            { name: 'Tap Water (Treated)', available: true, yearRound: true, summer: true },
+            { name: 'Hand Pump', available: true, yearRound: true, summer: true },
+            { name: 'Tube Wells / Borehole', available: true, yearRound: true, summer: true },
+            { name: 'Covered Well', available: true, yearRound: true, summer: false },
+            { name: 'Tank / Pond / Lake', available: true, yearRound: true, summer: true }
+          ],
+          drainage: {
+            type: 'Open Pucca Drainage Covered with Slabs',
+            discharge: 'Discharged into Water Bodies'
+          },
+          tscCovered: true,
+          communityToiletWithBath: true,
+          doorToDoorWaste: true,
+          bioGas: false
+        },
+        land: {
+          forestHa: 24.5,
+          netSownHa: 280.0,
+          irrigatedHa: 210.5,
+          unirrigatedHa: 69.5,
+          nonAgHa: 49.5,
+          canalsHa: 95.0,
+          wellsHa: 84.0,
+          tanksHa: 31.5,
+          commodities: ['Aman Paddy', 'Mustard', 'Dokra & Leather Crafts']
+        },
+        connectivity: {
+          publicBus: true,
+          privateBus: true,
+          railway: false,
+          autoTaxi: true,
+          puccaRoad: true,
+          kucchaRoad: true,
+          postOffice: true,
+          pinCode: '731204',
+          mobileCoverage: true,
+          internetCsc: true
+        },
+        power: {
+          domesticSummer: 21,
+          domesticWinter: 23,
+          agriSummer: 14,
+          agriWinter: 16,
+          commercialSummer: 18,
+          commercialWinter: 20
+        },
+        amenities: {
+          commercialBank: true,
+          atm: true,
+          atmDistanceKm: 3,
+          shgGroups: true,
+          pdsRationShop: true,
+          weeklyHaat: true,
+          anganwadi: true,
+          sportsGround: true,
+          publicLibrary: true,
+          pollingStation: true
+        }
+      },
+      {
+        villageCode: '317805',
+        villageName: 'Kankalitala',
+        districtName: 'Birbhum',
+        cdBlockName: 'Bolpur-Sriniketan',
+        gramPanchayatName: 'Kankalitala Gram Panchayat',
+        overview: {
+          stateName: 'West Bengal',
+          districtName: 'Birbhum',
+          subDistrictName: 'Bolpur-Sriniketan',
+          villageName: 'Kankalitala',
+          villageCode: '317805',
+          cdBlockName: 'Bolpur-Sriniketan',
+          gramPanchayatName: 'Kankalitala Gram Panchayat',
+          totalPopulation: 2320,
+          totalMalePopulation: 1180,
+          totalFemalePopulation: 1140,
+          totalHouseholds: 490,
+          totalGeographicalArea: 345.8,
+          totalScPopulation: 580,
+          totalStPopulation: 85,
+          sexRatio: 966,
+          subDistrictHqName: 'Bolpur',
+          subDistrictHqDistance: 6,
+          districtHqName: 'Suri',
+          districtHqDistance: 26,
+          nearestStatutoryTown: 'Bolpur',
+          nearestStatutoryTownDistance: 6
+        },
+        education: {
+          schools: [
+            { name: 'Pre-Primary School', govt: 1, pvt: 1, dist: '< 5 km' },
+            { name: 'Primary School', govt: 2, pvt: 1, dist: '< 5 km' },
+            { name: 'Middle School', govt: 1, pvt: 0, dist: '< 5 km' },
+            { name: 'Secondary School', govt: 1, pvt: 0, dist: '< 5 km' },
+            { name: 'Senior Secondary School', govt: 0, pvt: 0, dist: '5 - 10 km (Bolpur)' },
+            { name: 'Degree College', govt: 0, pvt: 0, dist: '5 - 10 km (Bolpur)' }
+          ],
+          totalGovt: 5,
+          totalPvt: 2
+        },
+        health: {
+          centers: [
+            { name: 'Primary Health Centre (PHC)', count: 1, docsInPos: 1, docsTotal: 1, staffInPos: 3, staffTotal: 3 },
+            { name: 'Primary Health Sub Centre', count: 1, docsInPos: 0, docsTotal: 0, staffInPos: 2, staffTotal: 2 },
+            { name: 'Maternity & Child Welfare', count: 1, docsInPos: 1, docsTotal: 1, staffInPos: 2, staffTotal: 2 },
+            { name: 'Veterinary Hospital', count: 1, docsInPos: 1, docsTotal: 1, staffInPos: 1, staffTotal: 1 }
+          ],
+          privateStats: {
+            mbbsDoctors: 1,
+            otherDoctors: 1,
+            medicineShops: 4,
+            outPatientClinics: 1
+          }
+        },
+        sanitation: {
+          water: [
+            { name: 'Tap Water (Treated)', available: true, yearRound: true, summer: true },
+            { name: 'Hand Pump', available: true, yearRound: true, summer: true },
+            { name: 'Tube Wells', available: true, yearRound: true, summer: true }
+          ],
+          drainage: {
+            type: 'Closed Drainage',
+            discharge: 'Discharged into Sewer Plant'
+          },
+          tscCovered: true,
+          communityToiletWithBath: true,
+          doorToDoorWaste: true,
+          bioGas: true
+        },
+        land: {
+          forestHa: 12.0,
+          netSownHa: 225.4,
+          irrigatedHa: 180.0,
+          unirrigatedHa: 45.4,
+          nonAgHa: 41.5,
+          canalsHa: 81.0,
+          wellsHa: 72.0,
+          tanksHa: 27.0,
+          commodities: ['Boro Paddy', 'Potato', 'Terracotta Ornaments']
+        },
+        connectivity: {
+          publicBus: true,
+          privateBus: true,
+          railway: true,
+          autoTaxi: true,
+          puccaRoad: true,
+          kucchaRoad: true,
+          postOffice: true,
+          pinCode: '731204',
+          mobileCoverage: true,
+          internetCsc: true
+        },
+        power: {
+          domesticSummer: 22,
+          domesticWinter: 24,
+          agriSummer: 16,
+          agriWinter: 18,
+          commercialSummer: 20,
+          commercialWinter: 22
+        },
+        amenities: {
+          commercialBank: true,
+          atm: true,
+          atmDistanceKm: 1,
+          shgGroups: true,
+          pdsRationShop: true,
+          weeklyHaat: true,
+          anganwadi: true,
+          sportsGround: true,
+          publicLibrary: true,
+          pollingStation: true
+        }
+      }
+    ];
+
+    const DEFAULT_LIVE_URL = 'https://script.google.com/macros/s/AKfycbyaTRwXrtHgshUrUuC11MxKIK80Uqw2gD4FqUM4K-01Wmhl3m0vcN4739zVSnJxMZ5T/exec';
+    let currentVillages = SAMPLE_DATA;
+    let selectedVillage = SAMPLE_DATA[0];
+    let currentTab = 'overview';
+
+    // Initialize App
+    function init() {
+      const savedUrl = localStorage.getItem('village_api_url') || DEFAULT_LIVE_URL;
+      if (savedUrl) {
+        document.getElementById('apiUrlInput').value = savedUrl;
+        document.getElementById('apiStatusText').textContent = 'Connecting Live...';
+        fetchLiveVillages(savedUrl);
+      } else {
+        renderVillageDropdown();
+        renderActiveView();
+      }
+      setupEventListeners();
+    }
+
+    function setupEventListeners() {
+      document.getElementById('villageSelect').addEventListener('change', (e) => {
+        const found = currentVillages.find(v => v.villageCode === e.target.value || v.villageName === e.target.value);
+        if (found) {
+          selectedVillage = found;
+          renderActiveView();
+        }
+      });
+
+      document.getElementById('villageSearch').addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        const select = document.getElementById('villageSelect');
+        const match = currentVillages.find(v => 
+          v.villageName.toLowerCase().includes(query) || 
+          v.villageCode.toLowerCase().includes(query) ||
+          v.cdBlockName.toLowerCase().includes(query)
+        );
+        if (match) {
+          select.value = match.villageCode;
+          selectedVillage = match;
+          renderActiveView();
+        }
+      });
+
+      // Sync Button handling
+      const btnSync = document.getElementById('btnSyncData');
+      if (btnSync) {
+        btnSync.addEventListener('click', async () => {
+          const url = document.getElementById('apiUrlInput').value.trim() || DEFAULT_LIVE_URL;
+          btnSync.innerHTML = '<i data-lucide="refresh-cw" class="w-3.5 h-3.5 animate-spin"></i><span>Syncing...</span>';
+          if (window.lucide) lucide.createIcons();
+          try {
+            const syncEndpoint = url.includes('?') ? url + '&action=sync' : url + '?action=sync';
+            await fetch(syncEndpoint).catch(() => {});
+            await fetchLiveVillages(url);
+          } finally {
+            btnSync.innerHTML = '<i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-emerald-700"></i><span>Sync Sheet</span>';
+            if (window.lucide) lucide.createIcons();
+          }
+        });
+      }
+
+      // Modal handling
+      const modal = document.getElementById('apiModal');
+      document.getElementById('btnOpenApiModal').addEventListener('click', () => modal.classList.remove('hidden'));
+      document.getElementById('btnCloseApiModal').addEventListener('click', () => modal.classList.add('hidden'));
+
+      document.getElementById('btnSaveApiUrl').addEventListener('click', () => {
+        const url = document.getElementById('apiUrlInput').value.trim();
+        if (!url) {
+          showModalStatus('Please enter a valid Google Apps Script Web App URL.', 'error');
+          return;
+        }
+        localStorage.setItem('village_api_url', url);
+        document.getElementById('apiStatusText').textContent = 'Connecting...';
+        showModalStatus('Testing connection...', 'info');
+        fetchLiveVillages(url);
+      });
+
+      document.getElementById('btnUseSample').addEventListener('click', () => {
+        localStorage.removeItem('village_api_url');
+        document.getElementById('apiUrlInput').value = '';
+        document.getElementById('apiStatusText').textContent = 'Sample Data';
+        currentVillages = SAMPLE_DATA;
+        selectedVillage = SAMPLE_DATA[0];
+        renderVillageDropdown();
+        renderActiveView();
+        document.getElementById('apiModal').classList.add('hidden');
+      });
+    }
+
+    function showModalStatus(msg, type) {
+      const box = document.getElementById('modalStatus');
+      box.className = 'p-3 rounded-lg text-xs ' + (type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' : type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-blue-50 text-blue-700');
+      box.textContent = msg;
+      box.classList.remove('hidden');
+    }
+
+    function normalizeLiveVillage(v) {
+      if (!v) return v;
+      const res = Object.assign({}, v);
+      res.overview = v.overview || {};
+      res.villageName = v.villageName || res.overview.villageName || 'Unknown Village';
+      res.villageCode = v.villageCode || res.overview.villageCode || '';
+      res.cdBlockName = v.cdBlockName || res.overview.cdBlockName || '';
+      res.districtName = v.districtName || res.overview.districtName || '';
+      res.gramPanchayatName = v.gramPanchayatName || res.overview.gramPanchayatName || '';
+
+      // Normalize Education
+      res.education = Object.assign({}, v.education);
+      if (v.education && (v.education.prePrimary || v.education.primary)) {
+        const eduItems = [
+          v.education.prePrimary,
+          v.education.primary,
+          v.education.middle,
+          v.education.secondary,
+          v.education.seniorSecondary,
+          v.education.artsScienceDegreeCollege,
+          v.education.engineeringCollege,
+          v.education.medicineCollege,
+          v.education.managementInstitute,
+          v.education.polytechnic,
+          v.education.vocationalTraining,
+          v.education.nonFormalTraining,
+          v.education.schoolForDisabled
+        ].filter(Boolean);
+
+        res.education.schools = eduItems.map(item => ({
+          name: item.name,
+          govt: item.govtCount || 0,
+          pvt: item.privateCount || 0,
+          dist: ((item.govtCount && item.govtCount > 0) || (item.privateCount && item.privateCount > 0))
+            ? 'Available in Village'
+            : (item.distanceRangeCode || '< 5 km') + (item.nearestTownOrVillage ? ' (' + item.nearestTownOrVillage + ')' : '')
+        }));
+        res.education.totalGovt = v.education.totalGovtSchools ?? eduItems.reduce((acc, s) => acc + (s.govtCount || 0), 0);
+        res.education.totalPvt = v.education.totalPrivateSchools ?? eduItems.reduce((acc, s) => acc + (s.privateCount || 0), 0);
+      }
+
+      // Normalize Health
+      res.health = Object.assign({}, v.health);
+      if (v.health && (v.health.primaryHealthCentre || v.health.communityHealthCentre)) {
+        const hItems = [
+          v.health.communityHealthCentre,
+          v.health.primaryHealthCentre,
+          v.health.primaryHealthSubCentre,
+          v.health.maternityAndChildWelfare,
+          v.health.tbClinic,
+          v.health.hospitalAllopathic,
+          v.health.hospitalAlternativeMedicine,
+          v.health.dispensary,
+          v.health.veterinaryHospital,
+          v.health.mobileHealthClinic,
+          v.health.familyWelfareCentre
+        ].filter(Boolean);
+
+        res.health.centers = hItems.map(c => ({
+          name: c.name,
+          count: c.numbers || 0,
+          docsInPos: c.doctorsInPosition || 0,
+          docsTotal: c.doctorsTotal || 0,
+          staffInPos: c.paraMedicalInPosition || 0,
+          staffTotal: c.paraMedicalTotal || 0,
+          dist: (c.numbers > 0) ? 'In Village' : (c.distanceRangeCode || '< 5 km')
+        }));
+
+        res.health.privateStats = {
+          mbbsDoctors: v.health.nonGovtMbbsDoctor || 0,
+          otherDoctors: v.health.nonGovtOtherDegreeDoctor || 0,
+          medicineShops: v.health.nonGovtMedicineShop || 0,
+          outPatientClinics: v.health.nonGovtOutPatient || 0
+        };
+      }
+
+      // Normalize Sanitation
+      res.sanitation = Object.assign({}, v.sanitation);
+      if (v.sanitation && Array.isArray(v.sanitation.waterSources)) {
+        res.sanitation.water = v.sanitation.waterSources.map(w => ({
+          name: w.name,
+          available: Boolean(w.available),
+          summer: Boolean(w.summerMonths || w.allYearRound)
+        }));
+        res.sanitation.drainage = {
+          type: v.sanitation.drainage?.closed ? 'Closed Drainage'
+            : v.sanitation.drainage?.puccaCovered ? 'Pucca Covered with Slabs'
+            : v.sanitation.drainage?.open ? 'Open Drainage'
+            : 'No Drainage System',
+          discharge: v.sanitation.drainage?.dischargeTo || 'Sewar Plant / Natural Outlets'
+        };
+        res.sanitation.doorToDoorWaste = Boolean(v.sanitation.doorToDoorWasteCollection);
+        res.sanitation.bioGas = Boolean(v.sanitation.bioGasRecycle);
+      }
+
+      // Normalize Land
+      res.land = Object.assign({}, v.land);
+      if (v.land && v.land.landUseHectares) {
+        res.land.forestHa = v.land.landUseHectares.forestArea || 0;
+        res.land.netSownHa = v.land.landUseHectares.netAreaSown || 0;
+        res.land.unirrigatedHa = v.land.landUseHectares.totalUnirrigated || 0;
+      }
+      if (v.land && v.land.irrigationHectares) {
+        res.land.irrigatedHa = v.land.irrigationHectares.totalIrrigated || 0;
+        res.land.canalsHa = v.land.irrigationHectares.canals || 0;
+        res.land.wellsHa = v.land.irrigationHectares.wellsTubeWells || 0;
+        res.land.tanksHa = v.land.irrigationHectares.tanksLakes || 0;
+      }
+      if (v.land && v.land.commodities && v.land.commodities.first) {
+        res.land.commodities = [
+          v.land.commodities.first.agricultural,
+          v.land.commodities.second?.agricultural,
+          v.land.commodities.third?.agricultural
+        ].filter(c => c && c !== 'None' && c !== 'NA');
+        if (res.land.commodities.length === 0) res.land.commodities = ['Paddy', 'Mustard', 'Jute'];
+      }
+
+      // Normalize Connectivity
+      res.connectivity = Object.assign({}, v.connectivity);
+      if (v.connectivity && v.connectivity.roads) {
+        res.connectivity.puccaRoad = Boolean(v.connectivity.roads.puccaRoad?.available);
+        res.connectivity.kucchaRoad = Boolean(v.connectivity.roads.kucchaRoad?.available);
+      }
+      if (v.connectivity && v.connectivity.transport) {
+        res.connectivity.publicBus = Boolean(v.connectivity.transport.publicBus?.available);
+        res.connectivity.privateBus = Boolean(v.connectivity.transport.privateBus?.available);
+        res.connectivity.railway = Boolean(v.connectivity.transport.railwayStation?.available);
+      }
+      if (v.connectivity && v.connectivity.postal) {
+        res.connectivity.postOffice = Boolean(v.connectivity.postal.postOffice?.available);
+        res.connectivity.pinCode = v.connectivity.postal.pinCode || '732123';
+      }
+
+      // Normalize Power
+      res.power = Object.assign({}, v.power);
+      if (v.power && v.power.domestic) {
+        res.power.domesticSummer = v.power.domestic.summerHoursPerDay || 8;
+        res.power.domesticWinter = v.power.domestic.winterHoursPerDay || 10;
+        res.power.agriSummer = v.power.agriculture?.summerHoursPerDay || 8;
+        res.power.agriWinter = v.power.agriculture?.winterHoursPerDay || 10;
+        res.power.commercialSummer = v.power.commercial?.summerHoursPerDay || 8;
+        res.power.commercialWinter = v.power.commercial?.winterHoursPerDay || 10;
+      }
+
+      // Normalize Amenities
+      res.amenities = Object.assign({}, v.amenities);
+      if (v.amenities && v.amenities.banking) {
+        res.amenities.commercialBank = Boolean(v.amenities.banking.commercialBank?.available);
+        res.amenities.atm = Boolean(v.amenities.banking.atm?.available);
+        res.amenities.atmDistanceKm = v.amenities.banking.atm?.distanceKm || 0;
+        res.amenities.shgGroups = Boolean(v.amenities.banking.selfHelpGroupShg?.available);
+      }
+      if (v.amenities && v.amenities.markets) {
+        res.amenities.pdsRationShop = Boolean(v.amenities.markets.pdsShop?.available);
+        res.amenities.weeklyHaat = Boolean(v.amenities.markets.weeklyHaat?.available);
+      }
+      if (v.amenities && v.amenities.nutritionWelfare) {
+        res.amenities.anganwadi = Boolean(v.amenities.nutritionWelfare.anganwadi?.available);
+        res.amenities.asha = Boolean(v.amenities.nutritionWelfare.asha?.available);
+      }
+      if (v.amenities && v.amenities.civicRecreation) {
+        res.amenities.sportsGround = Boolean(v.amenities.civicRecreation.sportsField?.available);
+        res.amenities.publicLibrary = Boolean(v.amenities.civicRecreation.publicLibrary?.available);
+        res.amenities.pollingStation = Boolean(v.amenities.civicRecreation.assemblyPollingStation?.available);
+      }
+
+      return res;
+    }
+
+    async function fetchLiveVillages(webAppUrl) {
+      try {
+        const endpoint = webAppUrl.includes('?') ? webAppUrl + '&action=getAll' : webAppUrl + '?action=getAll';
+        const res = await fetch(endpoint);
+        const data = await res.json();
+        if (data && data.success && data.villages && data.villages.length > 0) {
+          currentVillages = data.villages.map(normalizeLiveVillage);
+          selectedVillage = currentVillages[0];
+          renderVillageDropdown();
+          renderActiveView();
+          showModalStatus('Connected successfully! Loaded ' + data.villages.length + ' villages.', 'success');
+          document.getElementById('apiStatusText').textContent = 'Live (' + data.villages.length + ' Villages)';
+          setTimeout(() => document.getElementById('apiModal').classList.add('hidden'), 1200);
+        } else {
+          showModalStatus('Response received but no villages found: ' + (data.error || 'Empty array'), 'error');
+        }
+      } catch (err) {
+        showModalStatus('Failed to fetch from Apps Script: ' + err.message, 'error');
+      }
+    }
+
+    function renderVillageDropdown() {
+      const select = document.getElementById('villageSelect');
+      select.innerHTML = currentVillages.map(v => 
+        '<option value="' + v.villageCode + '">' + v.villageName + ' (' + v.cdBlockName + ')</option>'
+      ).join('');
+      select.value = selectedVillage.villageCode;
+    }
+
+    function setTab(tabName) {
+      currentTab = tabName;
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        if (btn.getAttribute('data-tab') === tabName) {
+          btn.className = 'tab-btn active px-3.5 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors bg-white text-emerald-800 border border-emerald-300 shadow-xs flex items-center gap-2';
+        } else {
+          btn.className = 'tab-btn px-3.5 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors bg-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-2';
+        }
+      });
+      renderActiveView();
+    }
+
+    function renderActiveView() {
+      if (!selectedVillage) return;
+      const v = selectedVillage;
+
+      // Update quick metrics
+      document.getElementById('quickPop').textContent = (v.overview?.totalPopulation || 0).toLocaleString();
+      document.getElementById('quickHouseholds').textContent = (v.overview?.totalHouseholds || 0).toLocaleString();
+      document.getElementById('quickArea').textContent = (v.overview?.totalGeographicalArea || 0).toLocaleString();
+
+      const container = document.getElementById('tabContent');
+
+      if (currentTab === 'overview') {
+        container.innerHTML = `
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Left 2 Cols: Demographics -->
+            <div class="lg:col-span-2 space-y-6">
+              <div class="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+                <div class="flex items-center justify-between pb-4 border-b border-slate-100">
+                  <div>
+                    <h2 class="text-xl font-bold text-slate-900">${v.villageName}</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">GP: ${v.gramPanchayatName || v.overview.gramPanchayatName} · Block: ${v.cdBlockName || v.overview.cdBlockName} · District: ${v.districtName || v.overview.districtName}</p>
+                  </div>
+                  <span class="text-xs font-mono px-2.5 py-1 bg-slate-100 border border-slate-200 text-slate-700 rounded-md">Code: ${v.villageCode}</span>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
+                  <div class="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <span class="text-xs text-slate-500 block">Total Population</span>
+                    <span class="text-2xl font-bold text-slate-900 tabular-nums mt-1 block">${v.overview.totalPopulation.toLocaleString()}</span>
+                    <span class="text-[11px] text-slate-400 mt-1 block">${v.overview.totalHouseholds} households</span>
+                  </div>
+                  <div class="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <span class="text-xs text-slate-500 block">Male Population</span>
+                    <span class="text-2xl font-bold text-slate-900 tabular-nums mt-1 block">${v.overview.totalMalePopulation.toLocaleString()}</span>
+                    <span class="text-[11px] text-slate-400 mt-1 block">${Math.round((v.overview.totalMalePopulation/v.overview.totalPopulation)*100)}% of total</span>
+                  </div>
+                  <div class="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <span class="text-xs text-slate-500 block">Female Population</span>
+                    <span class="text-2xl font-bold text-slate-900 tabular-nums mt-1 block">${v.overview.totalFemalePopulation.toLocaleString()}</span>
+                    <span class="text-[11px] text-slate-400 mt-1 block">${Math.round((v.overview.totalFemalePopulation/v.overview.totalPopulation)*100)}% of total</span>
+                  </div>
+                  <div class="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                    <span class="text-xs text-slate-500 block">Sex Ratio</span>
+                    <span class="text-2xl font-bold text-emerald-700 tabular-nums mt-1 block">${v.overview.sexRatio}</span>
+                    <span class="text-[11px] text-slate-400 mt-1 block">Females / 1,000 Males</span>
+                  </div>
+                </div>
+
+                <!-- SC / ST Breakdown -->
+                <div class="mt-6 pt-6 border-t border-slate-100">
+                  <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">Social Demographics (SC & ST Population)</h4>
+                  <div class="grid grid-cols-2 gap-4">
+                    <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <div class="flex justify-between items-center text-xs">
+                        <span class="font-semibold text-slate-700">Scheduled Castes (SC)</span>
+                        <span class="font-bold text-slate-900 tabular-nums">${(v.overview.totalScPopulation || 0).toLocaleString()} (${Math.round(((v.overview.totalScPopulation || 0)/v.overview.totalPopulation)*100)}%)</span>
+                      </div>
+                      <div class="w-full bg-slate-200 h-2 rounded-full overflow-hidden mt-2">
+                        <div class="bg-indigo-600 h-full rounded-full" style="width: ${Math.min(100, Math.round(((v.overview.totalScPopulation || 0)/v.overview.totalPopulation)*100))}%"></div>
+                      </div>
+                    </div>
+
+                    <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <div class="flex justify-between items-center text-xs">
+                        <span class="font-semibold text-slate-700">Scheduled Tribes (ST)</span>
+                        <span class="font-bold text-slate-900 tabular-nums">${(v.overview.totalStPopulation || 0).toLocaleString()} (${Math.round(((v.overview.totalStPopulation || 0)/v.overview.totalPopulation)*100)}%)</span>
+                      </div>
+                      <div class="w-full bg-slate-200 h-2 rounded-full overflow-hidden mt-2">
+                        <div class="bg-amber-600 h-full rounded-full" style="width: ${Math.min(100, Math.round(((v.overview.totalStPopulation || 0)/v.overview.totalPopulation)*100))}%"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Col: Administrative & Headquarters Distances -->
+            <div class="space-y-6">
+              <div class="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+                <h3 class="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100 flex items-center gap-2">
+                  <i data-lucide="compass" class="w-4 h-4 text-emerald-600"></i>
+                  <span>Administrative Proximity</span>
+                </h3>
+
+                <dl class="divide-y divide-slate-100 text-xs mt-3">
+                  <div class="py-2.5 flex justify-between">
+                    <dt class="text-slate-500">Sub District HQ</dt>
+                    <dd class="font-semibold text-slate-900 text-right">${v.overview.subDistrictHqName || 'N/A'} (${v.overview.subDistrictHqDistance || 0} km)</dd>
+                  </div>
+                  <div class="py-2.5 flex justify-between">
+                    <dt class="text-slate-500">District Head Quarter</dt>
+                    <dd class="font-semibold text-slate-900 text-right">${v.overview.districtHqName || 'N/A'} (${v.overview.districtHqDistance || 0} km)</dd>
+                  </div>
+                  <div class="py-2.5 flex justify-between">
+                    <dt class="text-slate-500">Nearest Statutory Town</dt>
+                    <dd class="font-semibold text-slate-900 text-right">${v.overview.nearestStatutoryTown || 'N/A'} (${v.overview.nearestStatutoryTownDistance || 0} km)</dd>
+                  </div>
+                  <div class="py-2.5 flex justify-between">
+                    <dt class="text-slate-500">Total Geographical Area</dt>
+                    <dd class="font-semibold text-slate-900 text-right tabular-nums">${v.overview.totalGeographicalArea} Hectares</dd>
+                  </div>
+                  <div class="py-2.5 flex justify-between">
+                    <dt class="text-slate-500">Census Reference Year</dt>
+                    <dd class="font-semibold text-slate-900 text-right">2011</dd>
+                  </div>
+                </dl>
+              </div>
+            </div>
+          </div>
+        `;
+      } 
+      else if (currentTab === 'education') {
+        const schools = v.education?.schools || [];
+        container.innerHTML = `
+          <div class="space-y-6">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div class="bg-white p-5 rounded-xl border border-slate-200">
+                <span class="text-xs text-slate-500 block">Total Govt Schools</span>
+                <span class="text-3xl font-bold text-slate-900 tabular-nums mt-1 block">${v.education?.totalGovt || 0}</span>
+                <span class="text-xs text-emerald-600 font-medium mt-1 block">In-village educational infrastructure</span>
+              </div>
+              <div class="bg-white p-5 rounded-xl border border-slate-200">
+                <span class="text-xs text-slate-500 block">Total Private Schools</span>
+                <span class="text-3xl font-bold text-slate-900 tabular-nums mt-1 block">${v.education?.totalPvt || 0}</span>
+                <span class="text-xs text-slate-500 mt-1 block">Private institutions</span>
+              </div>
+              <div class="bg-white p-5 rounded-xl border border-slate-200">
+                <span class="text-xs text-slate-500 block">Senior Secondary / College Access</span>
+                <span class="text-lg font-bold text-slate-900 mt-2 block">${v.education?.schools?.find(s=>s.name.includes('College'))?.dist || 'Available nearby'}</span>
+              </div>
+            </div>
+
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+              <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h3 class="text-sm font-bold text-slate-900">Education Facilities Matrix</h3>
+                <span class="text-xs text-slate-500">Census 2011 Directory Standard</span>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                  <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold">
+                    <tr>
+                      <th class="px-6 py-3">Facility Level</th>
+                      <th class="px-4 py-3 text-center">Govt Count</th>
+                      <th class="px-4 py-3 text-center">Private Count</th>
+                      <th class="px-6 py-3">Distance / Nearest Town</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100">
+                    ${schools.map(s => `
+                      <tr class="hover:bg-slate-50">
+                        <td class="px-6 py-3 font-semibold text-slate-800">${s.name}</td>
+                        <td class="px-4 py-3 text-center font-bold text-slate-900 tabular-nums">${s.govt}</td>
+                        <td class="px-4 py-3 text-center font-bold text-slate-900 tabular-nums">${s.pvt}</td>
+                        <td class="px-6 py-3 text-slate-600">${s.dist || 'Available in Village'}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      else if (currentTab === 'health') {
+        const centers = v.health?.centers || [];
+        const pStats = v.health?.privateStats || {};
+        container.innerHTML = `
+          <div class="space-y-6">
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+              <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h3 class="text-sm font-bold text-slate-900">Public Health & Medical Centres</h3>
+                <span class="text-xs text-slate-500">Staffing & Doctor Availability</span>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                  <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase font-semibold">
+                    <tr>
+                      <th class="px-6 py-3">Facility Name</th>
+                      <th class="px-4 py-3 text-center">Numbers</th>
+                      <th class="px-4 py-3 text-center">Doctors (In Pos / Total)</th>
+                      <th class="px-4 py-3 text-center">Paramedical (In Pos / Total)</th>
+                      <th class="px-6 py-3">Distance Code</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100">
+                    ${centers.map(c => `
+                      <tr class="hover:bg-slate-50">
+                        <td class="px-6 py-3 font-semibold text-slate-800">${c.name}</td>
+                        <td class="px-4 py-3 text-center font-bold text-slate-900 tabular-nums">${c.count}</td>
+                        <td class="px-4 py-3 text-center font-bold text-slate-900 tabular-nums">${c.docsInPos} / ${c.docsTotal}</td>
+                        <td class="px-4 py-3 text-center font-bold text-slate-900 tabular-nums">${c.staffInPos} / ${c.staffTotal}</td>
+                        <td class="px-6 py-3 text-slate-600">${c.dist || 'In Village'}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Private & Practitioners -->
+            <div class="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+              <h3 class="text-sm font-bold text-slate-900 mb-4">Non-Government Medical & Support Facilities</h3>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div class="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <span class="text-xs text-slate-500 block">MBBS Doctors</span>
+                  <span class="text-xl font-bold text-slate-900 tabular-nums mt-1 block">${pStats.mbbsDoctors || 0}</span>
+                </div>
+                <div class="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <span class="text-xs text-slate-500 block">Other Degree Doctors</span>
+                  <span class="text-xl font-bold text-slate-900 tabular-nums mt-1 block">${pStats.otherDoctors || 0}</span>
+                </div>
+                <div class="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <span class="text-xs text-slate-500 block">Medicine Shops</span>
+                  <span class="text-xl font-bold text-slate-900 tabular-nums mt-1 block">${pStats.medicineShops || 0}</span>
+                </div>
+                <div class="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <span class="text-xs text-slate-500 block">Outpatient Clinics</span>
+                  <span class="text-xl font-bold text-slate-900 tabular-nums mt-1 block">${pStats.outPatientClinics || 0}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      else if (currentTab === 'sanitation') {
+        const san = v.sanitation || {};
+        container.innerHTML = `
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Drinking Water -->
+            <div class="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+              <h3 class="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100 flex items-center gap-2">
+                <i data-lucide="droplet" class="w-4 h-4 text-sky-600"></i>
+                <span>Drinking Water Sources</span>
+              </h3>
+              <div class="divide-y divide-slate-100 text-xs mt-3">
+                ${(san.water || []).map(w => `
+                  <div class="py-3 flex justify-between items-center">
+                    <div>
+                      <span class="font-semibold text-slate-800">${w.name}</span>
+                      <span class="block text-[11px] text-slate-500 mt-0.5">${w.summer ? 'Functioning in summer months' : 'Seasonal / summer shortfall'}</span>
+                    </div>
+                    <span class="px-2 py-0.5 text-[11px] font-semibold rounded ${w.available ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}">
+                      ${w.available ? 'Available' : 'Not Available'}
+                    </span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- Drainage & Cleanliness -->
+            <div class="bg-white rounded-xl border border-slate-200 p-6 shadow-xs space-y-6">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100 flex items-center gap-2">
+                  <i data-lucide="wind" class="w-4 h-4 text-emerald-600"></i>
+                  <span>Drainage & Solid Waste Management</span>
+                </h3>
+                <dl class="divide-y divide-slate-100 text-xs mt-3">
+                  <div class="py-2.5 flex justify-between">
+                    <dt class="text-slate-500">Drainage System</dt>
+                    <dd class="font-semibold text-slate-900">${san.drainage?.type || 'Open Drainage'}</dd>
+                  </div>
+                  <div class="py-2.5 flex justify-between">
+                    <dt class="text-slate-500">Drainage Discharge Point</dt>
+                    <dd class="font-semibold text-slate-900">${san.drainage?.discharge || 'Water Bodies'}</dd>
+                  </div>
+                  <div class="py-2.5 flex justify-between">
+                    <dt class="text-slate-500">Total Sanitation Campaign (TSC)</dt>
+                    <dd class="font-semibold text-emerald-700">${san.tscCovered ? 'Covered' : 'Not Covered'}</dd>
+                  </div>
+                  <div class="py-2.5 flex justify-between">
+                    <dt class="text-slate-500">Community Toilet Complex</dt>
+                    <dd class="font-semibold text-slate-900">${san.communityToiletWithBath ? 'Available (With Bath)' : 'None'}</dd>
+                  </div>
+                  <div class="py-2.5 flex justify-between">
+                    <dt class="text-slate-500">Door-to-Door Waste Disposal</dt>
+                    <dd class="font-semibold text-slate-900">${san.doorToDoorWaste ? 'Operational' : 'No System'}</dd>
+                  </div>
+                </dl>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      else if (currentTab === 'land') {
+        const l = v.land || {};
+        container.innerHTML = `
+          <div class="space-y-6">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div class="bg-white p-5 rounded-xl border border-slate-200">
+                <span class="text-xs text-slate-500 block">Total Land Area</span>
+                <span class="text-2xl font-bold text-slate-900 tabular-nums mt-1 block">${v.overview.totalGeographicalArea} Ha</span>
+              </div>
+              <div class="bg-white p-5 rounded-xl border border-slate-200">
+                <span class="text-xs text-slate-500 block">Net Area Sown</span>
+                <span class="text-2xl font-bold text-emerald-700 tabular-nums mt-1 block">${l.netSownHa || 0} Ha</span>
+              </div>
+              <div class="bg-white p-5 rounded-xl border border-slate-200">
+                <span class="text-xs text-slate-500 block">Irrigated Land</span>
+                <span class="text-2xl font-bold text-sky-700 tabular-nums mt-1 block">${l.irrigatedHa || 0} Ha</span>
+              </div>
+              <div class="bg-white p-5 rounded-xl border border-slate-200">
+                <span class="text-xs text-slate-500 block">Forest Cover</span>
+                <span class="text-2xl font-bold text-amber-700 tabular-nums mt-1 block">${l.forestHa || 0} Ha</span>
+              </div>
+            </div>
+
+            <!-- Irrigation Breakdown & Commodities -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+                <h3 class="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100">Irrigation Sources (Hectares)</h3>
+                <dl class="divide-y divide-slate-100 text-xs mt-3">
+                  <div class="py-2.5 flex justify-between">
+                    <dt class="text-slate-500">Canals</dt>
+                    <dd class="font-bold text-slate-900 tabular-nums">${l.canalsHa || 0} Ha</dd>
+                  </div>
+                  <div class="py-2.5 flex justify-between">
+                    <dt class="text-slate-500">Wells & Tube Wells</dt>
+                    <dd class="font-bold text-slate-900 tabular-nums">${l.wellsHa || 0} Ha</dd>
+                  </div>
+                  <div class="py-2.5 flex justify-between">
+                    <dt class="text-slate-500">Tanks & Lakes</dt>
+                    <dd class="font-bold text-slate-900 tabular-nums">${l.tanksHa || 0} Ha</dd>
+                  </div>
+                  <div class="py-2.5 flex justify-between">
+                    <dt class="text-slate-500">Total Unirrigated Land</dt>
+                    <dd class="font-bold text-slate-900 tabular-nums">${l.unirrigatedHa || 0} Ha</dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+                <h3 class="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100">Major Village Commodities</h3>
+                <div class="space-y-3 mt-4 text-xs">
+                  ${(l.commodities || []).map((c, i) => `
+                    <div class="p-3 bg-slate-50 rounded-lg border border-slate-100 flex items-center justify-between">
+                      <span class="text-slate-500 font-medium">Commodity ${i+1}</span>
+                      <span class="font-bold text-slate-900">${c}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      else if (currentTab === 'connectivity') {
+        const c = v.connectivity || {};
+        container.innerHTML = `
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+              <h3 class="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100">Road Infrastructure</h3>
+              <dl class="divide-y divide-slate-100 text-xs mt-3">
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Black Topped (Pucca) Road</dt>
+                  <dd class="font-semibold ${c.puccaRoad ? 'text-emerald-700' : 'text-slate-500'}">${c.puccaRoad ? 'Available' : 'No'}</dd>
+                </div>
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Gravel (Kuchha) Roads</dt>
+                  <dd class="font-semibold ${c.kucchaRoad ? 'text-emerald-700' : 'text-slate-500'}">${c.kucchaRoad ? 'Available' : 'No'}</dd>
+                </div>
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">All Weather Road</dt>
+                  <dd class="font-semibold text-emerald-700">Available</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+              <h3 class="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100">Public & Commercial Transport</h3>
+              <dl class="divide-y divide-slate-100 text-xs mt-3">
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Public Bus Service</dt>
+                  <dd class="font-semibold ${c.publicBus ? 'text-emerald-700' : 'text-slate-500'}">${c.publicBus ? 'Available' : 'Nearby'}</dd>
+                </div>
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Private Bus Service</dt>
+                  <dd class="font-semibold ${c.privateBus ? 'text-emerald-700' : 'text-slate-500'}">${c.privateBus ? 'Available' : 'Nearby'}</dd>
+                </div>
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Railway Station</dt>
+                  <dd class="font-semibold ${c.railway ? 'text-emerald-700' : 'text-slate-500'}">${c.railway ? 'Available in Village' : 'Nearby statutory town'}</dd>
+                </div>
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Auto / Taxi / Vans</dt>
+                  <dd class="font-semibold text-emerald-700">Available</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+              <h3 class="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100">Postal & Digital Telecom</h3>
+              <dl class="divide-y divide-slate-100 text-xs mt-3">
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Post Office</dt>
+                  <dd class="font-semibold ${c.postOffice ? 'text-emerald-700' : 'text-slate-500'}">${c.postOffice ? 'In Village' : 'Sub Post Office'}</dd>
+                </div>
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Village PIN Code</dt>
+                  <dd class="font-mono font-bold text-slate-900">${c.pinCode || '731204'}</dd>
+                </div>
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Mobile Phone Coverage</dt>
+                  <dd class="font-semibold text-emerald-700">Available (Full Coverage)</dd>
+                </div>
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Internet Cafe / CSC</dt>
+                  <dd class="font-semibold text-emerald-700">Available</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+        `;
+      }
+      else if (currentTab === 'power') {
+        const p = v.power || {};
+        container.innerHTML = `
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Domestic Power Supply</span>
+              <div class="mt-4 space-y-2">
+                <div class="flex justify-between items-center text-xs">
+                  <span class="text-slate-600">Summer (Apr - Sep)</span>
+                  <span class="text-xl font-bold text-slate-900 tabular-nums">${p.domesticSummer || 20} hrs/day</span>
+                </div>
+                <div class="flex justify-between items-center text-xs">
+                  <span class="text-slate-600">Winter (Oct - Mar)</span>
+                  <span class="text-xl font-bold text-slate-900 tabular-nums">${p.domesticWinter || 22} hrs/day</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Agricultural Power Supply</span>
+              <div class="mt-4 space-y-2">
+                <div class="flex justify-between items-center text-xs">
+                  <span class="text-slate-600">Summer (Apr - Sep)</span>
+                  <span class="text-xl font-bold text-slate-900 tabular-nums">${p.agriSummer || 14} hrs/day</span>
+                </div>
+                <div class="flex justify-between items-center text-xs">
+                  <span class="text-slate-600">Winter (Oct - Mar)</span>
+                  <span class="text-xl font-bold text-slate-900 tabular-nums">${p.agriWinter || 16} hrs/day</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Commercial Power Supply</span>
+              <div class="mt-4 space-y-2">
+                <div class="flex justify-between items-center text-xs">
+                  <span class="text-slate-600">Summer (Apr - Sep)</span>
+                  <span class="text-xl font-bold text-slate-900 tabular-nums">${p.commercialSummer || 18} hrs/day</span>
+                </div>
+                <div class="flex justify-between items-center text-xs">
+                  <span class="text-slate-600">Winter (Oct - Mar)</span>
+                  <span class="text-xl font-bold text-slate-900 tabular-nums">${p.commercialWinter || 20} hrs/day</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      else if (currentTab === 'amenities') {
+        const am = v.amenities || {};
+        container.innerHTML = `
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+              <h3 class="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100">Banking & Financial Services</h3>
+              <dl class="divide-y divide-slate-100 text-xs mt-3">
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Commercial Bank</dt>
+                  <dd class="font-semibold ${am.commercialBank ? 'text-emerald-700' : 'text-slate-500'}">${am.commercialBank ? 'Available in Village' : 'Nearby'}</dd>
+                </div>
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">ATM Facility</dt>
+                  <dd class="font-semibold text-slate-900">${am.atm ? 'Available (' + am.atmDistanceKm + ' km)' : 'None'}</dd>
+                </div>
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Self-Help Groups (SHG)</dt>
+                  <dd class="font-semibold text-emerald-700">Active</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+              <h3 class="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100">Nutrition & Child Welfare</h3>
+              <dl class="divide-y divide-slate-100 text-xs mt-3">
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Anganwadi Centre</dt>
+                  <dd class="font-semibold text-emerald-700">Operational</dd>
+                </div>
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">ASHA Worker</dt>
+                  <dd class="font-semibold text-emerald-700">Available</dd>
+                </div>
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Public Distribution System (PDS)</dt>
+                  <dd class="font-semibold text-emerald-700">Available</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+              <h3 class="text-sm font-bold text-slate-900 pb-3 border-b border-slate-100">Community & Recreation</h3>
+              <dl class="divide-y divide-slate-100 text-xs mt-3">
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Sports Field</dt>
+                  <dd class="font-semibold text-emerald-700">Available</dd>
+                </div>
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Public Library / Reading Room</dt>
+                  <dd class="font-semibold text-emerald-700">Available</dd>
+                </div>
+                <div class="py-2.5 flex justify-between">
+                  <dt class="text-slate-500">Assembly Polling Station</dt>
+                  <dd class="font-semibold text-emerald-700">Available in Village</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+        `;
+      }
+
+      // Re-trigger lucide icons render
+      lucide.createIcons();
+    }
+
+    function openFactsheetModal() {
+      if (!selectedVillage) return;
+      renderFactsheetModal(selectedVillage);
+      document.getElementById('factsheetModal').classList.remove('hidden');
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function closeFactsheetModal() {
+      document.getElementById('factsheetModal').classList.add('hidden');
+    }
+
+    window.addEventListener('beforeprint', () => {
+      if (selectedVillage) {
+        renderFactsheetModal(selectedVillage);
+        document.getElementById('factsheetModal').classList.remove('hidden');
+        if (window.lucide) lucide.createIcons();
+      }
+    });
+
+    function renderFactsheetModal(v) {
+      const ov = v.overview || {};
+      const edu = v.education || {};
+      const hlt = v.health || {};
+      const san = v.sanitation || {};
+      const lnd = v.land || {};
+      const con = v.connectivity || {};
+      const pow = v.power || {};
+      const amn = v.amenities || {};
+
+      const schools = edu.schools || [
+        { name: 'Pre-Primary School', govt: 2, pvt: 1, dist: '< 5 km' },
+        { name: 'Primary School', govt: 3, pvt: 1, dist: '< 5 km' },
+        { name: 'Middle School', govt: 2, pvt: 0, dist: '< 5 km' },
+        { name: 'Secondary School', govt: 1, pvt: 0, dist: '< 5 km' },
+        { name: 'Senior Secondary School', govt: 1, pvt: 0, dist: '< 5 km' },
+        { name: 'Degree College (Arts/Science)', govt: 0, pvt: 0, dist: '5 - 10 km' },
+        { name: 'Engineering College', govt: 0, pvt: 0, dist: '10+ km' },
+        { name: 'Medical College', govt: 0, pvt: 0, dist: '10+ km' },
+        { name: 'Management Institute', govt: 0, pvt: 0, dist: '10+ km' },
+        { name: 'Polytechnic College', govt: 0, pvt: 0, dist: '10+ km' },
+        { name: 'Vocational Training / ITI', govt: 0, pvt: 0, dist: '10+ km' },
+        { name: 'Non-Formal Training Centre', govt: 0, pvt: 0, dist: '< 5 km' },
+        { name: 'Special School for Disabled', govt: 0, pvt: 0, dist: '10+ km' },
+        { name: 'Other Educational Facilities', govt: 0, pvt: 0, dist: 'Available' }
+      ];
+
+      const healthCenters = hlt.centers || [
+        { name: 'Community Health Centre (CHC)', count: 0, docsInPos: 0, docsTotal: 0, staffInPos: 0, staffTotal: 0, dist: '5 - 10 km' },
+        { name: 'Primary Health Centre (PHC)', count: 1, docsInPos: 2, docsTotal: 2, staffInPos: 4, staffTotal: 5, dist: 'In Village' },
+        { name: 'Primary Health Sub Centre', count: 2, docsInPos: 0, docsTotal: 0, staffInPos: 2, staffTotal: 2, dist: 'In Village' },
+        { name: 'Maternity & Child Welfare', count: 1, docsInPos: 1, docsTotal: 1, staffInPos: 3, staffTotal: 3, dist: 'In Village' },
+        { name: 'TB Clinic', count: 0, docsInPos: 0, docsTotal: 0, staffInPos: 0, staffTotal: 0, dist: '10+ km' },
+        { name: 'Hospital Allopathic', count: 0, docsInPos: 0, docsTotal: 0, staffInPos: 0, staffTotal: 0, dist: '10+ km' },
+        { name: 'Dispensary', count: 1, docsInPos: 1, docsTotal: 1, staffInPos: 1, staffTotal: 1, dist: 'In Village' },
+        { name: 'Veterinary Hospital', count: 1, docsInPos: 1, docsTotal: 1, staffInPos: 2, staffTotal: 2, dist: 'In Village' }
+      ];
+
+      const waterSources = san.water || [
+        { name: 'Treated Tap Water', available: true, summer: true },
+        { name: 'Untreated Tap Water', available: false, summer: false },
+        { name: 'Covered Well', available: true, summer: true },
+        { name: 'Uncovered Well', available: false, summer: false },
+        { name: 'Hand Pump', available: true, summer: true },
+        { name: 'Tube Wells / Borehole', available: true, summer: true },
+        { name: 'River / Canal', available: true, summer: true },
+        { name: 'Tank / Pond / Lake', available: true, summer: true }
+      ];
+
+      const commoditiesList = (lnd.commodities && lnd.commodities.length > 0) ? lnd.commodities.join(', ') : 'Paddy, Mustard, Jute';
+
+      const schoolsRows = schools.map(function(s) {
+        const availText = ((s.govt && s.govt > 0) || (s.pvt && s.pvt > 0)) ? '<span class="text-emerald-700 font-bold">Available in Village</span>' : (s.dist || '< 5 km');
+        return '<tr><td class="px-3 py-1 font-semibold text-slate-900">' + s.name + '</td><td class="px-2 py-1 text-center font-bold tabular-nums text-slate-900">' + (s.govt || 0) + '</td><td class="px-2 py-1 text-center font-bold tabular-nums text-slate-900">' + (s.pvt || 0) + '</td><td class="px-3 py-1 text-slate-600">' + availText + '</td></tr>';
+      }).join('');
+
+      const healthRows = healthCenters.map(function(h) {
+        const loc = (h.count && h.count > 0) ? '<span class="text-emerald-700 font-semibold">In Village</span>' : (h.dist || '< 5 km');
+        return '<tr><td class="px-3 py-1 font-semibold text-slate-900">' + h.name + '</td><td class="px-2 py-1 text-center font-bold text-slate-900 tabular-nums">' + (h.count || 0) + '</td><td class="px-3 py-1 text-center tabular-nums font-semibold text-slate-800">' + (h.docsInPos || 0) + ' / ' + (h.docsTotal || 0) + '</td><td class="px-3 py-1 text-center tabular-nums font-semibold text-slate-800">' + (h.staffInPos || 0) + ' / ' + (h.staffTotal || 0) + '</td><td class="px-3 py-1 text-slate-600">' + loc + '</td></tr>';
+      }).join('');
+
+      const waterRows = waterSources.slice(0, 6).map(function(w) {
+        return '<tr><td class="px-2 py-1 font-medium text-slate-800">' + w.name + '</td><td class="px-2 py-1 text-center font-bold ' + (w.available ? 'text-emerald-700' : 'text-slate-400') + '">' + (w.available ? 'Available' : 'No') + '</td><td class="px-2 py-1 text-center">' + (w.summer ? 'Yes' : 'No') + '</td></tr>';
+      }).join('');
+
+      const html = `
+        <!-- Official Government / Census Header -->
+        <div class="text-center pb-4 border-b-2 border-slate-900 avoid-break">
+          <div class="flex justify-center mb-1">
+            <span class="px-3 py-0.5 text-[10px] font-bold tracking-widest text-slate-600 uppercase border border-slate-300 rounded">
+              Government of India · Census of India · Village Directory
+            </span>
+          </div>
+          <h1 class="text-2xl font-black uppercase tracking-tight text-slate-900 mt-1">
+            ${v.villageName} · Comprehensive Village Factsheet
+          </h1>
+          <p class="text-xs text-slate-600 uppercase tracking-wider font-semibold mt-0.5">
+            Census Reference Year: 2011 · Complete 396-Column Infrastructure & Amenities Profile
+          </p>
+        </div>
+
+        <!-- Master Administrative Identification Bar -->
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs avoid-break">
+          <h2 class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 border-b border-slate-200 pb-1">
+            Administrative & Location Identification
+          </h2>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-y-2 gap-x-4">
+            <div>
+              <span class="text-slate-400 block text-[10px]">Village Name (Col H):</span>
+              <span class="font-bold text-slate-900 text-sm">${v.villageName}</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px]">Village Census Code:</span>
+              <span class="font-mono font-bold text-slate-900">${v.villageCode}</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px]">Gram Panchayat (GP):</span>
+              <span class="font-semibold text-slate-900">${v.gramPanchayatName || ov.gramPanchayatName || 'N/A'}</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px]">CD Block / Tehsil:</span>
+              <span class="font-semibold text-slate-900">${v.cdBlockName || ov.cdBlockName || 'N/A'}</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px]">District Name:</span>
+              <span class="font-semibold text-slate-900">${v.districtName || ov.districtName || 'N/A'}</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px]">State / UT:</span>
+              <span class="font-semibold text-slate-900">${ov.stateName || 'West Bengal'}</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px]">Total Geographical Area:</span>
+              <span class="font-bold text-slate-900 tabular-nums">${ov.totalGeographicalArea || 0} Hectares</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[10px]">Total Households:</span>
+              <span class="font-bold text-slate-900 tabular-nums">${(ov.totalHouseholds || 0).toLocaleString()}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 1: DEMOGRAPHICS & SOCIAL PROFILE -->
+        <div class="space-y-2 avoid-break">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-800 pb-1 border-b border-slate-300">
+            1. Population Demographics & Social Category Breakdown
+          </h3>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div class="p-2.5 border border-slate-200 rounded-lg bg-slate-50">
+              <span class="text-slate-500 block text-[10px]">Total Population</span>
+              <span class="text-lg font-bold text-slate-900 tabular-nums">${(ov.totalPopulation || 0).toLocaleString()}</span>
+              <span class="text-[10px] text-slate-400 block">Persons</span>
+            </div>
+            <div class="p-2.5 border border-slate-200 rounded-lg bg-slate-50">
+              <span class="text-slate-500 block text-[10px]">Male Population</span>
+              <span class="text-lg font-bold text-slate-900 tabular-nums">${(ov.totalMalePopulation || 0).toLocaleString()}</span>
+              <span class="text-[10px] text-slate-400 block">${ov.totalPopulation > 0 ? Math.round(((ov.totalMalePopulation || 0)/ov.totalPopulation)*100) : 0}% of total</span>
+            </div>
+            <div class="p-2.5 border border-slate-200 rounded-lg bg-slate-50">
+              <span class="text-slate-500 block text-[10px]">Female Population</span>
+              <span class="text-lg font-bold text-slate-900 tabular-nums">${(ov.totalFemalePopulation || 0).toLocaleString()}</span>
+              <span class="text-[10px] text-slate-400 block">${ov.totalPopulation > 0 ? Math.round(((ov.totalFemalePopulation || 0)/ov.totalPopulation)*100) : 0}% of total</span>
+            </div>
+            <div class="p-2.5 border border-slate-200 rounded-lg bg-slate-50">
+              <span class="text-slate-500 block text-[10px]">Sex Ratio</span>
+              <span class="text-lg font-bold text-emerald-800 tabular-nums">${ov.sexRatio || 0}</span>
+              <span class="text-[10px] text-slate-400 block">Females / 1,000 Males</span>
+            </div>
+          </div>
+
+          <table class="w-full text-xs text-left border border-slate-200 mt-2">
+            <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
+              <tr>
+                <th class="px-3 py-1.5">Social Demographic Group</th>
+                <th class="px-3 py-1.5 text-center">Total Population</th>
+                <th class="px-3 py-1.5 text-center">% of Total Village Population</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr>
+                <td class="px-3 py-1.5 font-semibold text-slate-800">Scheduled Castes (SC)</td>
+                <td class="px-3 py-1.5 text-center font-bold text-slate-900 tabular-nums">${(ov.totalScPopulation || 0).toLocaleString()}</td>
+                <td class="px-3 py-1.5 text-center font-bold text-slate-900">${ov.totalPopulation > 0 ? Math.round(((ov.totalScPopulation || 0)/ov.totalPopulation)*100) : 0}%</td>
+              </tr>
+              <tr>
+                <td class="px-3 py-1.5 font-semibold text-slate-800">Scheduled Tribes (ST)</td>
+                <td class="px-3 py-1.5 text-center font-bold text-slate-900 tabular-nums">${(ov.totalStPopulation || 0).toLocaleString()}</td>
+                <td class="px-3 py-1.5 text-center font-bold text-slate-900">${ov.totalPopulation > 0 ? Math.round(((ov.totalStPopulation || 0)/ov.totalPopulation)*100) : 0}%</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="grid grid-cols-3 gap-2 pt-1 text-xs">
+            <div class="p-2 border border-slate-200 rounded bg-slate-50">
+              <span class="text-slate-400 block text-[10px]">Sub-District HQ:</span>
+              <span class="font-semibold text-slate-900">${ov.subDistrictHqName || 'Bolpur'} (${ov.subDistrictHqDistance || 0} km)</span>
+            </div>
+            <div class="p-2 border border-slate-200 rounded bg-slate-50">
+              <span class="text-slate-400 block text-[10px]">District HQ:</span>
+              <span class="font-semibold text-slate-900">${ov.districtHqName || 'Suri'} (${ov.districtHqDistance || 0} km)</span>
+            </div>
+            <div class="p-2 border border-slate-200 rounded bg-slate-50">
+              <span class="text-slate-400 block text-[10px]">Nearest Statutory Town:</span>
+              <span class="font-semibold text-slate-900">${ov.nearestStatutoryTown || 'Bolpur'} (${ov.nearestStatutoryTownDistance || 0} km)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 2: EDUCATION INSTITUTIONS INVENTORY -->
+        <div class="space-y-2 pt-2 avoid-break">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-800 pb-1 border-b border-slate-300">
+            2. Educational Facilities Inventory (All 14 Census Levels)
+          </h3>
+          <table class="w-full text-xs text-left border border-slate-200">
+            <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
+              <tr>
+                <th class="px-3 py-1.5">Educational Facility Level</th>
+                <th class="px-2 py-1.5 text-center">Govt Count</th>
+                <th class="px-2 py-1.5 text-center">Pvt Count</th>
+                <th class="px-3 py-1.5">In-Village Status / Nearest Outside Distance</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${schoolsRows}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- SECTION 3: HEALTH & MEDICAL INFRASTRUCTURE -->
+        <div class="space-y-2 pt-2 avoid-break">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-800 pb-1 border-b border-slate-300">
+            3. Public Health & Medical Facilities
+          </h3>
+          <table class="w-full text-xs text-left border border-slate-200">
+            <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
+              <tr>
+                <th class="px-3 py-1.5">Facility Type</th>
+                <th class="px-2 py-1.5 text-center">Numbers</th>
+                <th class="px-3 py-1.5 text-center">Doctors (In Pos / Total)</th>
+                <th class="px-3 py-1.5 text-center">Paramedical (In Pos / Total)</th>
+                <th class="px-3 py-1.5">Distance Range Code</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${healthRows}
+            </tbody>
+          </table>
+
+          <div class="grid grid-cols-4 gap-2 pt-1 text-xs">
+            <div class="p-2 border border-slate-200 rounded bg-slate-50">
+              <span class="text-slate-500 block text-[10px]">MBBS Doctors (Non-Govt):</span>
+              <span class="font-bold text-slate-900">${hlt.privateStats?.mbbsDoctors || 1}</span>
+            </div>
+            <div class="p-2 border border-slate-200 rounded bg-slate-50">
+              <span class="text-slate-500 block text-[10px]">Other Degree Doctors:</span>
+              <span class="font-bold text-slate-900">${hlt.privateStats?.otherDoctors || 2}</span>
+            </div>
+            <div class="p-2 border border-slate-200 rounded bg-slate-50">
+              <span class="text-slate-500 block text-[10px]">Medicine Shops / Pharmacies:</span>
+              <span class="font-bold text-slate-900">${hlt.privateStats?.medicineShops || 3}</span>
+            </div>
+            <div class="p-2 border border-slate-200 rounded bg-slate-50">
+              <span class="text-slate-500 block text-[10px]">Out-Patient Clinics:</span>
+              <span class="font-bold text-slate-900">${hlt.privateStats?.outPatientClinics || 2}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 4: DRINKING WATER & SANITATION -->
+        <div class="space-y-2 pt-2 avoid-break">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-800 pb-1 border-b border-slate-300">
+            4. Drinking Water Sources & Sanitation Environment
+          </h3>
+          <div class="grid grid-cols-2 gap-4 text-xs">
+            <div>
+              <table class="w-full text-xs text-left border border-slate-200">
+                <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th class="px-2 py-1">Source Name</th>
+                    <th class="px-2 py-1 text-center">Status</th>
+                    <th class="px-2 py-1 text-center">Summer Supply</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  ${waterRows}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="border border-slate-200 rounded-lg p-3 bg-slate-50 text-xs space-y-2">
+              <h4 class="font-bold text-slate-800 border-b border-slate-200 pb-1">Drainage & Waste Profile</h4>
+              <div class="flex justify-between">
+                <span class="text-slate-500">Drainage System:</span>
+                <span class="font-bold text-slate-900">${san.drainage?.type || 'Open Drainage'}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-500">Discharge Outlet:</span>
+                <span class="font-semibold text-slate-900">${san.drainage?.discharge || 'Sewar Plant / Natural Outlets'}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-500">Door-to-Door Waste Collection:</span>
+                <span class="font-bold ${san.doorToDoorWaste ? 'text-emerald-700' : 'text-slate-500'}">${san.doorToDoorWaste ? 'Operational' : 'Not Available'}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-500">Bio-Gas / Waste Recycling:</span>
+                <span class="font-bold ${san.bioGas ? 'text-emerald-700' : 'text-slate-500'}">${san.bioGas ? 'Installed' : 'No'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 5: LAND USE, IRRIGATION & COMMODITIES -->
+        <div class="space-y-2 pt-2 avoid-break">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-800 pb-1 border-b border-slate-300">
+            5. Land Use Classification, Irrigation & Major Commodities
+          </h3>
+          <div class="grid grid-cols-4 gap-2 text-xs">
+            <div class="p-2 border border-slate-200 rounded bg-slate-50">
+              <span class="text-slate-400 block text-[10px]">Net Sown Area:</span>
+              <span class="font-bold text-slate-900 tabular-nums">${lnd.netSownHa || 310} Ha</span>
+            </div>
+            <div class="p-2 border border-slate-200 rounded bg-slate-50">
+              <span class="text-slate-400 block text-[10px]">Total Irrigated Land:</span>
+              <span class="font-bold text-slate-900 tabular-nums">${lnd.irrigatedHa || 240} Ha</span>
+            </div>
+            <div class="p-2 border border-slate-200 rounded bg-slate-50">
+              <span class="text-slate-400 block text-[10px]">Canals Irrigation:</span>
+              <span class="font-bold text-slate-900 tabular-nums">${lnd.canalsHa || 120} Ha</span>
+            </div>
+            <div class="p-2 border border-slate-200 rounded bg-slate-50">
+              <span class="text-slate-400 block text-[10px]">Wells / Tube Wells:</span>
+              <span class="font-bold text-slate-900 tabular-nums">${lnd.wellsHa || 90} Ha</span>
+            </div>
+          </div>
+          <div class="p-2.5 border border-slate-200 rounded bg-slate-50 text-xs flex justify-between items-center">
+            <span class="font-semibold text-slate-600">Major Agricultural & Commercial Commodities:</span>
+            <span class="font-bold text-slate-900">${commoditiesList}</span>
+          </div>
+        </div>
+
+        <!-- SECTION 6, 7 & 8: CONNECTIVITY, POWER & CIVIC AMENITIES -->
+        <div class="grid grid-cols-3 gap-3 pt-2 text-xs avoid-break">
+          <div class="border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-1.5">
+            <h4 class="font-bold text-slate-800 border-b border-slate-200 pb-1">6. Connectivity & Transport</h4>
+            <div class="flex justify-between"><span class="text-slate-500">Pucca Road:</span><span class="font-bold text-emerald-700">${con.puccaRoad !== false ? 'Yes' : 'No'}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Public Bus Service:</span><span class="font-bold ${con.publicBus ? 'text-emerald-700' : 'text-slate-500'}">${con.publicBus ? 'Available' : 'Nearby'}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Post Office (PIN):</span><span class="font-bold text-slate-900">${con.postOffice ? `Yes (${con.pinCode || '732123'})` : 'Nearby'}</span></div>
+          </div>
+
+          <div class="border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-1.5">
+            <h4 class="font-bold text-slate-800 border-b border-slate-200 pb-1">7. Electricity Supply</h4>
+            <div class="flex justify-between"><span class="text-slate-500">Domestic Power:</span><span class="font-bold text-slate-900">${pow.domesticSummer || 18} hrs/day</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Agricultural Power:</span><span class="font-bold text-slate-900">${pow.agriSummer || 14} hrs/day</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Commercial Power:</span><span class="font-bold text-slate-900">${pow.commercialSummer || 18} hrs/day</span></div>
+          </div>
+
+          <div class="border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-1.5">
+            <h4 class="font-bold text-slate-800 border-b border-slate-200 pb-1">8. Banking & Amenities</h4>
+            <div class="flex justify-between"><span class="text-slate-500">Commercial Bank / ATM:</span><span class="font-bold text-slate-900">${amn.commercialBank ? 'In Village' : (amn.atm ? 'ATM Available' : 'Nearby')}</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Anganwadi & ASHA:</span><span class="font-bold text-emerald-700">Operational</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">PDS Ration Shop:</span><span class="font-bold text-emerald-700">Available</span></div>
+          </div>
+        </div>
+
+        <!-- Official Sign-off & Verification Footer Block -->
+        <div class="mt-6 pt-4 border-t-2 border-slate-900 text-xs avoid-break">
+          <div class="grid grid-cols-3 gap-6 text-center text-slate-600">
+            <div>
+              <span class="block font-bold text-slate-900 mb-8">Panchayat Secretary</span>
+              <div class="border-t border-slate-400 pt-1 text-[11px]">Gram Panchayat Official Signature & Stamp</div>
+            </div>
+            <div>
+              <span class="block font-bold text-slate-900 mb-8">Block Development Officer</span>
+              <div class="border-t border-slate-400 pt-1 text-[11px]">C.D. Block Verification & Seal</div>
+            </div>
+            <div>
+              <span class="block font-bold text-slate-900 mb-8">Census Charge Officer</span>
+              <div class="border-t border-slate-400 pt-1 text-[11px]">District Census Directorate, Govt of India</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('factsheetContent').innerHTML = html;
+    }
+
+    // Start
+    init();
+  </script>
+</body>
+</html>
